@@ -77,9 +77,46 @@ Chart.register(
     Legend,
 );
 
-// **Receber os dados via props**
+const cpkData = ref([
+    {
+        data: "2025-02-01",
+        valor: 10.5,
+        valor_minimo: 9.8,
+        valor_maximo: 11.2,
+        valor_alvo: 10.0,
+    },
+    {
+        data: "2025-02-02",
+        valor: 11.0,
+        valor_minimo: 9.7,
+        valor_maximo: 11.5,
+        valor_alvo: 10.2,
+    },
+    {
+        data: "2025-02-03",
+        valor: 10.8,
+        valor_minimo: 9.6,
+        valor_maximo: 11.3,
+        valor_alvo: 10.1,
+    },
+    {
+        data: "2025-02-04",
+        valor: 10.4,
+        valor_minimo: 9.5,
+        valor_maximo: 11.1,
+        valor_alvo: 10.0,
+    },
+    {
+        data: "2025-02-05",
+        valor: 10.9,
+        valor_minimo: 9.9,
+        valor_maximo: 11.4,
+        valor_alvo: 10.3,
+    },
+]);
+
 const props = defineProps<{
-    cpkData: Array<{
+    cpkData?: Array<{
         data: string;
         valor: number;
         valor_minimo: number;
@@ -87,6 +124,8 @@ const props = defineProps<{
         valor_alvo: number;
     }>;
 }>();
+
+const localData = computed(() => props.cpkData ?? []);
 
 // **Referência para o gráfico**
 const chartRef = ref<HTMLCanvasElement | null>(null);
@@ -102,27 +141,39 @@ const selectedRange = ref<DateRange>({ start, end });
  */
 
 const getFilteredData = computed(() => {
-    return (
-        props.cpkData?.filter((data) => {
-            return (
-                props.cpkData?.filter((data) => {
-                    const dataDate = new Date(data.data);
-                    const startDate = new Date(
-                        selectedRange.value.start.year,
-                        selectedRange.value.start.month - 1,
-                        selectedRange.value.start.day,
-                    );
-                    const endDate = new Date(
-                        selectedRange.value.end.year,
-                        selectedRange.value.end.month - 1,
-                        selectedRange.value.end.day,
-                    );
+    if (!selectedRange.value.start || !selectedRange.value.end) {
+        console.log("Intervalo de datas não definido.");
+        return [];
+    }
 
-                    return dataDate >= startDate && dataDate <= endDate;
-                }) || []
-            );
-        }) || []
+    const startDate = new Date(
+        selectedRange.value.start.year,
+        selectedRange.value.start.month - 1,
+        selectedRange.value.start.day,
     );
+    const endDate = new Date(
+        selectedRange.value.end.year,
+        selectedRange.value.end.month - 1,
+        selectedRange.value.end.day,
+    );
+
+    console.log("Intervalo selecionado:", { startDate, endDate });
+    console.log("Dados originais antes do filtro:", cpkData.value);
+
+    const filtered = cpkData.value.filter((d) => {
+        const dataDate = new Date(d.data);
+        const isInRange = dataDate >= startDate && dataDate <= endDate;
+
+        console.log(
+            `Data ${d.data} (${dataDate}) está no intervalo?`,
+            isInRange,
+        );
+
+        return isInRange;
+    });
+
+    console.log("Dados filtrados:", filtered);
+    return filtered;
 });
 
 // **Cálculo das Estatísticas**
