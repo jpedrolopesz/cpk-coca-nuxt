@@ -1,12 +1,12 @@
 <template>
-    <div class="flex">
+    <div class="flex flex-col md:flex-row gap-4">
+        <!-- Gráfico + Estatísticas -->
         <div
             class="p-6 bg-white border border-gray-300 rounded-2xl shadow-lg w-full"
         >
             <h2 class="text-xl font-bold text-gray-800 mb-4 text-center">
                 Monitoramento de CPK e Tendências
             </h2>
-
             <div class="flex justify-center items-center py-4">
                 <canvas ref="chartRef" class="w-full"></canvas>
             </div>
@@ -42,16 +42,82 @@
             </div>
         </div>
 
-        <div class="flex justify-center mb-6">
-            <RangeCalendar v-model="selectedRange" class="rounded-md border" />
+        <!-- Upload + Tabela CSV + RangeCalendar -->
+        <div class="flex flex-col gap-4 w-full">
+            <div
+                class="p-6 bg-white border border-gray-300 rounded-2xl shadow-lg"
+            >
+                <h2 class="text-xl font-bold text-gray-800 mb-4 text-center">
+                    Upload e Processamento de CSV
+                </h2>
+                <input
+                    type="file"
+                    @change="handleFileUpload"
+                    accept=".csv"
+                    class="mb-4"
+                />
+
+                <!-- Exibe dados importados em tabela, para conferência -->
+                <div v-if="parsedData.length" class="mt-4">
+                    <h3 class="text-lg font-semibold text-gray-700 mb-3">
+                        Dados Importados:
+                    </h3>
+                    <div
+                        class="overflow-auto max-h-60 border border-gray-200 rounded-md p-2"
+                    >
+                        <table class="w-full text-sm text-left border-collapse">
+                            <thead class="bg-gray-100">
+                                <tr>
+                                    <th
+                                        v-for="(header, index) in headers"
+                                        :key="index"
+                                        class="border p-2"
+                                    >
+                                        {{ header }}
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr
+                                    v-for="(row, rowIndex) in parsedData"
+                                    :key="rowIndex"
+                                    class="border"
+                                >
+                                    <td
+                                        v-for="(value, key) in row"
+                                        :key="key"
+                                        class="p-2 border"
+                                    >
+                                        {{ value }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RangeCalendar para filtrar por datas -->
+            <div
+                class="p-6 bg-white border border-gray-300 rounded-2xl shadow-lg"
+            >
+                <h2 class="text-xl font-bold text-gray-800 mb-4 text-center">
+                    Filtrar por Data
+                </h2>
+                <RangeCalendar
+                    v-model="selectedRange"
+                    class="rounded-md border"
+                />
+            </div>
         </div>
     </div>
 </template>
 
 <script setup lang="ts">
+import Papa from "papaparse";
 import { ref, computed, watch, onMounted } from "vue";
-import { RangeCalendar } from "~/components/ui/range-calendar"; // Corrige importação para Nuxt
-import { getLocalTimeZone, today } from "@internationalized/date";
+import { RangeCalendar } from "~/components/ui/range-calendar";
+import { parseDate } from "@internationalized/date";
 import type { DateRange } from "radix-vue";
 import {
     Chart,
@@ -65,7 +131,7 @@ import {
     Legend,
 } from "chart.js";
 
-// **Registrar componentes do Chart.js**
+// Registra os componentes do Chart.js
 Chart.register(
     LineController,
     CategoryScale,
@@ -77,69 +143,33 @@ Chart.register(
     Legend,
 );
 
-const cpkData = ref([
-    {
-        data: "2025-02-01",
-        valor: 10.5,
-        valor_minimo: 9.8,
-        valor_maximo: 11.2,
-        valor_alvo: 10.0,
-    },
-    {
-        data: "2025-02-02",
-        valor: 11.0,
-        valor_minimo: 9.7,
-        valor_maximo: 11.5,
-        valor_alvo: 10.2,
-    },
-    {
-        data: "2025-02-03",
-        valor: 10.8,
-        valor_minimo: 9.6,
-        valor_maximo: 11.3,
-        valor_alvo: 10.1,
-    },
-    {
-        data: "2025-02-04",
-        valor: 10.4,
-        valor_minimo: 9.5,
-        valor_maximo: 11.1,
-        valor_alvo: 10.0,
-    },
-    {
-        data: "2025-02-05",
-        valor: 10.9,
-        valor_minimo: 9.9,
-        valor_maximo: 11.4,
-        valor_alvo: 10.3,
-    },
-]);
-
-const props = defineProps<{
-    cpkData?: Array<{
+// 1) Dados importados (formato esperado):
+// Cada objeto deve ter:
+//   - data: string no formato parseável (ex.: "YYYY-MM-DD")
+//   - valor: número (valor monitorado)
+//   - valor_minimo: número (limite inferior)
+//   - valor_maximo: número (limite superior)
+//   - valor_alvo: número (valor de referência)
+const cpkData = ref<
+    Array<{
         data: string;
         valor: number;
         valor_minimo: number;
         valor_maximo: number;
         valor_alvo: number;
-    }>;
-}>();
+    }>
+>([]);
 
-const localData = computed(() => props.cpkData ?? []);
+// 2) Dados importados para exibição na tabela (CSV)
+const parsedData = ref<Array<Record<string, string>>>([]);
+const headers = ref<string[]>([]);
 
-// **Referência para o gráfico**
-const chartRef = ref<HTMLCanvasElement | null>(null);
-let chartInstance: Chart | null = null;
-
-// **Intervalo de Datas Selecionado**
-const start = today(getLocalTimeZone());
-const end = start.add({ days: 7 });
+// 3) Range selecionado para o filtro
+const start = parseDate("2025-02-01");
+const end = parseDate("2025-02-10");
 const selectedRange = ref<DateRange>({ start, end });
 
-/**
- * Filtra os dados conforme o intervalo de datas selecionado.
- */
-
+// 4) Computed que filtra os dados conforme o range selecionado
 const getFilteredData = computed(() => {
     if (!selectedRange.value.start || !selectedRange.value.end) {
         console.log("Intervalo de datas não definido.");
@@ -157,73 +187,73 @@ const getFilteredData = computed(() => {
         selectedRange.value.end.day,
     );
 
-    console.log("Intervalo selecionado:", { startDate, endDate });
-    console.log("Dados originais antes do filtro:", cpkData.value);
-
-    const filtered = cpkData.value.filter((d) => {
+    return cpkData.value.filter((d) => {
         const dataDate = new Date(d.data);
-        const isInRange = dataDate >= startDate && dataDate <= endDate;
-
-        console.log(
-            `Data ${d.data} (${dataDate}) está no intervalo?`,
-            isInRange,
-        );
-
-        return isInRange;
+        return dataDate >= startDate && dataDate <= endDate;
     });
-
-    console.log("Dados filtrados:", filtered);
-    return filtered;
 });
 
-// **Cálculo das Estatísticas**
+// 5) Estatísticas baseadas nos dados filtrados
 const media = computed(() =>
     getFilteredData.value.length
         ? getFilteredData.value.reduce((sum, d) => sum + d.valor, 0) /
           getFilteredData.value.length
         : 0,
 );
+
 const desvioPadrao = computed(() => {
     if (!getFilteredData.value.length) return 0;
     const mean = media.value;
-    return Math.sqrt(
+    const variancia =
         getFilteredData.value.reduce(
             (sum, d) => sum + Math.pow(d.valor - mean, 2),
             0,
-        ) / getFilteredData.value.length,
-    );
+        ) / getFilteredData.value.length;
+    return Math.sqrt(variancia);
 });
+
 const minValor = computed(() =>
     getFilteredData.value.length
         ? Math.min(...getFilteredData.value.map((d) => d.valor_minimo))
         : 0,
 );
+
 const maxValor = computed(() =>
     getFilteredData.value.length
         ? Math.max(...getFilteredData.value.map((d) => d.valor_maximo))
         : 1,
 );
-const amplitude = computed(() => maxValor.value - minValor.value);
-const cp = computed(() =>
-    desvioPadrao.value === 0
-        ? 0
-        : (maxValor.value - minValor.value) / (6 * desvioPadrao.value),
-);
-const cpk = computed(() =>
-    desvioPadrao.value === 0
-        ? 0
-        : Math.min(
-              (media.value - minValor.value) / (3 * desvioPadrao.value),
-              (maxValor.value - media.value) / (3 * desvioPadrao.value),
-          ),
-);
 
-/**
- * Atualiza o gráfico ao mudar o intervalo de datas.
- */
+const amplitude = computed(() => maxValor.value - minValor.value);
+
+const cp = computed(() => {
+    if (desvioPadrao.value === 0) return 0;
+    return (maxValor.value - minValor.value) / (6 * desvioPadrao.value);
+});
+
+const cpk = computed(() => {
+    if (desvioPadrao.value === 0) return 0;
+    return Math.min(
+        (media.value - minValor.value) / (3 * desvioPadrao.value),
+        (maxValor.value - media.value) / (3 * desvioPadrao.value),
+    );
+});
+
+// 6) Referência para o gráfico e instância do Chart.js
+const chartRef = ref<HTMLCanvasElement | null>(null);
+let chartInstance: Chart | null = null;
+
+// 7) Função para atualizar o gráfico usando os dados filtrados
 const updateChart = () => {
     if (!chartRef.value) return;
-    if (!getFilteredData.value.length) return;
+
+    if (!getFilteredData.value.length) {
+        if (chartInstance) {
+            chartInstance.destroy();
+            chartInstance = null;
+        }
+        return;
+    }
 
     const labels = getFilteredData.value.map((d) =>
         new Date(d.data).toLocaleDateString("pt-BR"),
@@ -234,6 +264,7 @@ const updateChart = () => {
     const valoresMaximos = getFilteredData.value.map((d) => d.valor_maximo);
 
     if (chartInstance) chartInstance.destroy();
+
     chartInstance = new Chart(chartRef.value, {
         type: "line",
         data: {
@@ -274,12 +305,53 @@ const updateChart = () => {
         },
         options: {
             responsive: true,
-            scales: { y: { min: minValor.value, max: maxValor.value } },
+            scales: {
+                y: {
+                    min: minValor.value,
+                    max: maxValor.value,
+                },
+            },
         },
     });
 };
 
-// Atualiza o gráfico ao mudar o intervalo de datas
+// Atualiza o gráfico sempre que o range ou os dados importados mudarem
 watch(selectedRange, updateChart, { deep: true });
+watch(cpkData, updateChart);
+
+// Atualiza o gráfico ao montar o componente
 onMounted(updateChart);
+
+// 8) Função para processar o upload do CSV e converter os dados para o formato esperado
+const handleFileUpload = (event: Event) => {
+    const file = (event.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+
+    Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (result) => {
+            if (result.data.length > 0) {
+                parsedData.value = result.data as Array<Record<string, string>>;
+                headers.value = Object.keys(result.data[0]);
+
+                // Converte cada linha do CSV para o formato esperado
+                const convertedCSV = parsedData.value.map((row) => ({
+                    data: row.data, // Ex.: "YYYY-MM-DD"
+                    valor: parseFloat(row.valor),
+                    valor_minimo: parseFloat(row.valor_minimo),
+                    valor_maximo: parseFloat(row.valor_maximo),
+                    valor_alvo: parseFloat(row.valor_alvo),
+                }));
+
+                // Atualiza os dados que serão filtrados e exibidos no gráfico
+                cpkData.value = convertedCSV;
+                updateChart();
+            }
+        },
+        error: (error) => {
+            console.error("Erro ao processar CSV:", error);
+        },
+    });
+};
 </script>
