@@ -66,7 +66,7 @@
                                 <SidebarInput
                                     id="search"
                                     v-model="search"
-                                    placeholder="Search the docs..."
+                                    placeholder=""
                                     class="pl-8"
                                 />
                                 <Search
@@ -122,7 +122,7 @@
                             <h2
                                 class="text-xl font-bold text-gray-800 mb-4 text-center"
                             >
-                                Monitoramento de CPK e Tendências
+                                Índice de Capacidade de Processo
                             </h2>
                         </div>
 
