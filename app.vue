@@ -136,20 +136,14 @@
                                 accept=".csv"
                                 class="hidden"
                             />
-                            <button
-                                @click="triggerFileInput"
-                                class="p-1 bg-blue-500 hover:bg-blue-600 rounded-full text-white transition-colors shadow-md"
-                            >
-                                <UploadIcon />
-                            </button>
+                            <Button @click="triggerFileInput">
+                                Upload CVS
+                            </Button>
 
                             <!-- Botão para Gerar Relatório -->
-                            <button
-                                @click="generateReport"
-                                class="p-1 bg-green-500 hover:bg-green-600 rounded-full text-white transition-colors shadow-md"
-                            >
-                                <FileTextIcon />
-                            </button>
+                            <Button @click="generateReport">
+                                Gerar Relatório
+                            </Button>
 
                             <!-- Botão para abrir o Drawer com dados importados -->
                             <Drawer>
@@ -291,39 +285,69 @@
                                 ></canvas>
                             </div>
                             <div class="p-4">
+                                <!-- Estatísticas Gerais (todos os materiais) -->
                                 <h2
                                     class="text-lg font-semibold text-gray-700 mb-3 border-b pb-2"
                                 >
-                                    Estatísticas
+                                    Estatísticas (Geral)
                                 </h2>
-                                <ul class="space-y-3 text-gray-600 text-sm">
-                                    <li class="flex justify-between">
-                                        <span class="font-medium">Média:</span>
-                                        <span>{{ media.toFixed(2) }}</span>
+                                <ul
+                                    class="space-y-3 text-gray-600 text-sm border border-gray-200 rounded p-3"
+                                >
+                                    <li>Média: {{ media.toFixed(2) }}</li>
+                                    <li>
+                                        Desvio Padrão:
+                                        {{ desvioPadrao.toFixed(2) }}
                                     </li>
-                                    <li class="flex justify-between">
-                                        <span class="font-medium"
-                                            >Desvio Padrão (σ):</span
-                                        >
-                                        <span>{{
-                                            desvioPadrao.toFixed(2)
-                                        }}</span>
-                                    </li>
-                                    <li class="flex justify-between">
-                                        <span class="font-medium">CPK:</span>
-                                        <span>{{ cpk.toFixed(2) }}</span>
-                                    </li>
-                                    <li class="flex justify-between">
-                                        <span class="font-medium">CP:</span>
-                                        <span>{{ cp.toFixed(2) }}</span>
-                                    </li>
-                                    <li class="flex justify-between">
-                                        <span class="font-medium"
-                                            >Amplitude (Máx - Mín):</span
-                                        >
-                                        <span>{{ amplitude.toFixed(2) }}</span>
+                                    <li>CPK: {{ cpk.toFixed(2) }}</li>
+                                    <li>CP: {{ cp.toFixed(2) }}</li>
+                                    <li>
+                                        Amplitude (Máx - Mín):
+                                        {{ amplitude.toFixed(2) }}
                                     </li>
                                 </ul>
+
+                                <!-- Estatísticas por Material -->
+                                <h2
+                                    class="text-lg font-semibold text-gray-700 mb-3 mt-8 border-b pb-2"
+                                >
+                                    Estatísticas (Por Material)
+                                </h2>
+                                <!-- Se existir pelo menos um material, exibimos abaixo -->
+                                <div
+                                    v-if="statsByMaterialComputed.length"
+                                    class="space-y-4"
+                                >
+                                    <div
+                                        v-for="(
+                                            item, idx
+                                        ) in statsByMaterialComputed"
+                                        :key="idx"
+                                        class="border border-gray-200 rounded p-3"
+                                    >
+                                        <h3
+                                            class="font-semibold text-gray-700 mb-2"
+                                        >
+                                            Material: {{ item.material }}
+                                        </h3>
+                                        <ul
+                                            class="space-y-1 text-gray-600 text-sm"
+                                        >
+                                            <li>Média: {{ item.media }}</li>
+                                            <li>
+                                                Desvio Padrão: {{ item.desvio }}
+                                            </li>
+                                            <li>CP: {{ item.cp }}</li>
+                                            <li>CPK: {{ item.cpk }}</li>
+                                            <li>
+                                                Amplitude: {{ item.amplitude }}
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </div>
+                                <div v-else class="mt-2 text-gray-500 text-sm">
+                                    Nenhum dado por material.
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -427,7 +451,7 @@ const df = new DateFormatter("en-US", {
 
 // ----- ESTADO E LÓGICA DA SIDEBAR E DASHBOARD -----
 const data = {
-    versions: ["G1", "G2", "G3"],
+    versions: ["G3", "G2", "G1"],
     navMain: [
         {
             title: "Del Valle Kapo",
@@ -461,6 +485,7 @@ function setSelectedVersion(version: string) {
 }
 
 // ----- ESTADO PARA CSV, CHART E FILTRAGEM POR DATA -----
+// Incluindo o campo "material"
 const cpkData = ref<
     Array<{
         data: string;
@@ -468,18 +493,19 @@ const cpkData = ref<
         valor_minimo: number;
         valor_maximo: number;
         valor_alvo: number;
+        material: string;
     }>
 >([]);
 
 const parsedData = ref<Array<Record<string, string>>>([]);
 const headers = ref<string[]>([]);
 
-// Usamos parseDate para definir o range inicial (ajuste conforme sua necessidade)
+// Definindo o range inicial
 const start = parseDate("2025-02-01");
 const end = parseDate("2025-02-10");
 const selectedRange = ref({ start, end });
 
-// Filtra os dados conforme o intervalo selecionado
+// Filtra os dados com base no intervalo selecionado
 const getFilteredData = computed(() => {
     if (!selectedRange.value.start || !selectedRange.value.end) {
         console.log("Intervalo de datas não definido.");
@@ -501,7 +527,22 @@ const getFilteredData = computed(() => {
     });
 });
 
-// Cálculo das estatísticas
+// ----- AGRUPAMENTO POR PRODUTO -----
+const groupedData = computed(() => {
+    return getFilteredData.value.reduce(
+        (groups, row) => {
+            const key = row.material;
+            if (!groups[key]) {
+                groups[key] = [];
+            }
+            groups[key].push(row);
+            return groups;
+        },
+        {} as Record<string, typeof getFilteredData.value>,
+    );
+});
+
+// ----- CÁLCULOS ESTATÍSTICOS (GERAIS) -----
 const media = computed(() =>
     getFilteredData.value.length
         ? getFilteredData.value.reduce((sum, d) => sum + d.valor, 0) /
@@ -543,7 +584,53 @@ const cpk = computed(() =>
           ),
 );
 
-// CONFIGURAÇÃO DO CHART.JS
+// ----- FUNÇÃO AUXILIAR PARA CÁLCULO DE ESTATÍSTICAS POR MATERIAL -----
+function computeStats(records: typeof cpkData.value) {
+    if (!records.length) {
+        return { media: 0, desvio: 0, cp: 0, cpk: 0, amplitude: 0 };
+    }
+    const mean = records.reduce((acc, r) => acc + r.valor, 0) / records.length;
+    const variance =
+        records.reduce((acc, r) => acc + Math.pow(r.valor - mean, 2), 0) /
+        records.length;
+    const stdDev = Math.sqrt(variance);
+    const minVal = Math.min(...records.map((r) => r.valor_minimo));
+    const maxVal = Math.max(...records.map((r) => r.valor_maximo));
+    const amplitudeVal = maxVal - minVal;
+    const cpVal = stdDev === 0 ? 0 : (maxVal - minVal) / (6 * stdDev);
+    const cpkVal =
+        stdDev === 0
+            ? 0
+            : Math.min(
+                  (mean - minVal) / (3 * stdDev),
+                  (maxVal - mean) / (3 * stdDev),
+              );
+
+    return {
+        media: mean,
+        desvio: stdDev,
+        cp: cpVal,
+        cpk: cpkVal,
+        amplitude: amplitudeVal,
+    };
+}
+
+// ----- ESTATÍSTICAS POR MATERIAL (COMPUTED) -----
+const statsByMaterialComputed = computed(() => {
+    return Object.entries(groupedData.value).map(([material, records]) => {
+        const stats = computeStats(records);
+        return {
+            material,
+            media: stats.media.toFixed(2),
+            desvio: stats.desvio.toFixed(2),
+            cp: stats.cp.toFixed(2),
+            cpk: stats.cpk.toFixed(2),
+            amplitude: stats.amplitude.toFixed(2),
+        };
+    });
+});
+
+// ----- CONFIGURAÇÃO DO CHART.JS -----
 const chartRef = ref<HTMLCanvasElement | null>(null);
 let chartInstance: Chart | null = null;
 
@@ -556,51 +643,95 @@ const updateChart = () => {
         }
         return;
     }
-    const labels = getFilteredData.value.map((d) =>
-        new Date(d.data).toLocaleDateString("pt-BR"),
+    // Cria um conjunto unificado de labels (datas) a partir dos dados filtrados
+    const labelsSet = new Set(
+        getFilteredData.value.map((d) =>
+            new Date(d.data).toLocaleDateString("pt-BR"),
+        ),
     );
-    const values = getFilteredData.value.map((d) => d.valor);
-    const cpkAlvo = getFilteredData.value.map((d) => d.valor_alvo);
-    const valoresMinimos = getFilteredData.value.map((d) => d.valor_minimo);
-    const valoresMaximos = getFilteredData.value.map((d) => d.valor_maximo);
+    const labels = Array.from(labelsSet).sort(
+        (a, b) => new Date(a).getTime() - new Date(b).getTime(),
+    );
+
+    // Array de cores para diferenciar os produtos
+    const colors = [
+        "blue",
+        "red",
+        "green",
+        "orange",
+        "purple",
+        "teal",
+        "brown",
+    ];
+    const datasets: any[] = [];
+
+    // Para cada grupo (produto), gera 4 datasets: Monitorados, CPK Alvo, Valor Mínimo e Valor Máximo
+    Object.entries(groupedData.value).forEach(([material, records], index) => {
+        const baseColor = colors[index % colors.length];
+        const monitored = labels.map((label) => {
+            const rec = records.find(
+                (r) => new Date(r.data).toLocaleDateString("pt-BR") === label,
+            );
+            return rec ? rec.valor : null;
+        });
+        const alvo = labels.map((label) => {
+            const rec = records.find(
+                (r) => new Date(r.data).toLocaleDateString("pt-BR") === label,
+            );
+            return rec ? rec.valor_alvo : null;
+        });
+        const minimo = labels.map((label) => {
+            const rec = records.find(
+                (r) => new Date(r.data).toLocaleDateString("pt-BR") === label,
+            );
+            return rec ? rec.valor_minimo : null;
+        });
+        const maximo = labels.map((label) => {
+            const rec = records.find(
+                (r) => new Date(r.data).toLocaleDateString("pt-BR") === label,
+            );
+            return rec ? rec.valor_maximo : null;
+        });
+
+        datasets.push({
+            label: `Produto ${material} - Valores Monitorados`,
+            data: monitored,
+            borderColor: baseColor,
+            borderWidth: 2,
+            fill: false,
+        });
+        datasets.push({
+            label: `Produto ${material} - CPK Alvo`,
+            data: alvo,
+            borderColor: baseColor,
+            borderDash: [5, 5],
+            pointRadius: 0,
+            fill: false,
+        });
+        datasets.push({
+            label: `Produto ${material} - Valor Mínimo`,
+            data: minimo,
+            borderColor: baseColor,
+            borderDash: [5, 5],
+            pointRadius: 0,
+            fill: false,
+        });
+        datasets.push({
+            label: `Produto ${material} - Valor Máximo`,
+            data: maximo,
+            borderColor: baseColor,
+            borderDash: [5, 5],
+            pointRadius: 0,
+            fill: false,
+        });
+    });
+
     if (chartInstance) chartInstance.destroy();
     chartInstance = new Chart(chartRef.value, {
         type: "line",
         data: {
             labels,
-            datasets: [
-                {
-                    label: "Valores Monitorados",
-                    data: values,
-                    borderColor: "blue",
-                    borderWidth: 2,
-                    fill: false,
-                },
-                {
-                    label: "CPK Alvo",
-                    data: cpkAlvo,
-                    borderColor: "orange",
-                    borderDash: [5, 5],
-                    pointRadius: 0,
-                    fill: false,
-                },
-                {
-                    label: "Valor Mínimo",
-                    data: valoresMinimos,
-                    borderColor: "red",
-                    borderDash: [5, 5],
-                    pointRadius: 0,
-                    fill: false,
-                },
-                {
-                    label: "Valor Máximo",
-                    data: valoresMaximos,
-                    borderColor: "green",
-                    borderDash: [5, 5],
-                    pointRadius: 0,
-                    fill: false,
-                },
-            ],
+            datasets,
         },
         options: {
             responsive: true,
@@ -615,7 +746,7 @@ watch(selectedRange, updateChart, { deep: true });
 watch(cpkData, updateChart);
 onMounted(updateChart);
 
-// PROCESSAMENTO DO UPLOAD DO CSV
+// ----- PROCESSAMENTO DO UPLOAD DO CSV -----
 const handleFileUpload = (event: Event) => {
     const file = (event.target as HTMLInputElement).files?.[0];
     if (!file) return;
@@ -632,6 +763,7 @@ const handleFileUpload = (event: Event) => {
                     valor_minimo: parseFloat(row.valor_minimo),
                     valor_maximo: parseFloat(row.valor_maximo),
                     valor_alvo: parseFloat(row.valor_alvo),
+                    material: row.material || "", // Incluindo o novo campo "material"
                 }));
                 cpkData.value = convertedCSV;
                 updateChart();
@@ -643,51 +775,109 @@ const handleFileUpload = (event: Event) => {
     });
 };
 
+// ----- GERAÇÃO DE RELATÓRIO (OPCIONAL) -----
 const generateReport = () => {
-    const reportData = {
-        dataRelatorio: new Date().toLocaleString("pt-BR"),
+    // Formata as datas de início e fim, se existirem
+    const startString = selectedRange.value.start
+        ? df.format(selectedRange.value.start.toDate(getLocalTimeZone()))
+        : "N/A";
+    const endString = selectedRange.value.end
+        ? df.format(selectedRange.value.end.toDate(getLocalTimeZone()))
+        : "N/A";
+
+    // Estatísticas gerais (já calculadas nas computed properties)
+    const generalStats = {
         media: media.value.toFixed(2),
         desvio: desvioPadrao.value.toFixed(2),
         cp: cp.value.toFixed(2),
         cpk: cpk.value.toFixed(2),
         amplitude: amplitude.value.toFixed(2),
     };
+
+    // Estatísticas por material, usando sua função auxiliar ou computed
+    const statsByMaterial = statsByMaterialComputed.value;
+    // (Supondo que você já tenha a computed property statsByMaterialComputed)
+
+    // Gera HTML para exibir estatísticas por material
+    let statsByMaterialHTML = `
+    <h3>Estatísticas por Material</h3>
+    <table border="1" cellspacing="0" cellpadding="5" style="margin-top:10px; width:100%;">
+      <tr>
+        <th>Material</th>
+        <th>Média</th>
+        <th>Desvio Padrão</th>
+        <th>CP</th>
+        <th>CPK</th>
+        <th>Amplitude</th>
+      </tr>
+  `;
+    statsByMaterial.forEach((item) => {
+        statsByMaterialHTML += `
+      <tr>
+        <td>${item.material}</td>
+        <td>${item.media}</td>
+        <td>${item.desvio}</td>
+        <td>${item.cp}</td>
+        <td>${item.cpk}</td>
+        <td>${item.amplitude}</td>
+      </tr>
+    `;
+    });
+    statsByMaterialHTML += "</table>";
+
+    // Se quiser incluir o gráfico como imagem
     let imageData = "";
     if (chartRef.value) {
         imageData = chartRef.value.toDataURL("image/png");
     }
+
+    // Monta o HTML final do relatório
     const reportHTML = `
     <html>
       <head>
         <title>Relatório de Monitoramento</title>
         <style>
           body { font-family: Arial, sans-serif; margin: 20px; }
-          h1 { color: #333; }
+          h1, h2, h3 { color: #333; }
+          table { border-collapse: collapse; margin-top: 10px; }
+          th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
           .stats { margin: 20px 0; }
-          .stats li { margin-bottom: 5px; }
           .chart { margin-top: 20px; }
         </style>
       </head>
       <body>
         <h1>Relatório de Monitoramento</h1>
-        <p><strong>Data do Relatório:</strong> ${reportData.dataRelatorio}</p>
+        <p><strong>Data do Relatório:</strong> ${new Date().toLocaleString("pt-BR")}</p>
+        <p><strong>Período Selecionado:</strong> ${startString} - ${endString}</p>
+
         <div class="stats">
-          <h2>Estatísticas</h2>
+          <h2>Estatísticas Gerais</h2>
           <ul>
-            <li><strong>Média:</strong> ${reportData.media}</li>
-            <li><strong>Desvio Padrão:</strong> ${reportData.desvio}</li>
-            <li><strong>CP:</strong> ${reportData.cp}</li>
-            <li><strong>CPK:</strong> ${reportData.cpk}</li>
-            <li><strong>Amplitude:</strong> ${reportData.amplitude}</li>
+            <li><strong>Média:</strong> ${generalStats.media}</li>
+            <li><strong>Desvio Padrão:</strong> ${generalStats.desvio}</li>
+            <li><strong>CP:</strong> ${generalStats.cp}</li>
+            <li><strong>CPK:</strong> ${generalStats.cpk}</li>
+            <li><strong>Amplitude:</strong> ${generalStats.amplitude}</li>
           </ul>
         </div>
+
+        <div class="stats">
+          ${statsByMaterial.length > 0 ? statsByMaterialHTML : "<p>Nenhum dado por material.</p>"}
+        </div>
+
         <div class="chart">
           <h2>Gráfico</h2>
-          ${imageData ? `<img src="${imageData}" alt="Gráfico de Monitoramento" style="max-width: 100%;">` : "<p>Gráfico não disponível.</p>"}
+          ${
+              imageData
+                  ? `<img src="${imageData}" alt="Gráfico de Monitoramento" style="max-width: 100%; border:1px solid #ccc;">`
+                  : "<p>Gráfico não disponível.</p>"
+          }
         </div>
       </body>
     </html>
   `;
+
+    // Abre em nova aba (ou janela) para exibir o relatório
     const reportWindow = window.open("", "_blank");
     if (reportWindow) {
         reportWindow.document.write(reportHTML);
