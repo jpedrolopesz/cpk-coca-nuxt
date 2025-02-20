@@ -1,124 +1,369 @@
 <template>
-    <div class="flex flex-col md:flex-row gap-4">
-        <!-- Gráfico + Estatísticas -->
-        <div
-            class="p-6 bg-white border border-gray-300 rounded-2xl shadow-lg w-full"
-        >
-            <h2 class="text-xl font-bold text-gray-800 mb-4 text-center">
-                Monitoramento de CPK e Tendências
-            </h2>
-            <div class="flex justify-center items-center py-4">
-                <canvas ref="chartRef" class="w-full"></canvas>
-            </div>
-
-            <div class="mt-6">
-                <h2
-                    class="text-lg font-semibold text-gray-700 mb-3 border-b pb-2"
-                >
-                    Estatísticas
-                </h2>
-                <ul class="space-y-3 text-gray-600 text-sm">
-                    <li class="flex justify-between">
-                        <span class="font-medium">Média:</span>
-                        <span>{{ media.toFixed(2) }}</span>
-                    </li>
-                    <li class="flex justify-between">
-                        <span class="font-medium">Desvio Padrão (σ):</span>
-                        <span>{{ desvioPadrao.toFixed(2) }}</span>
-                    </li>
-                    <li class="flex justify-between">
-                        <span class="font-medium">CPK:</span>
-                        <span>{{ cpk.toFixed(2) }}</span>
-                    </li>
-                    <li class="flex justify-between">
-                        <span class="font-medium">CP:</span>
-                        <span>{{ cp.toFixed(2) }}</span>
-                    </li>
-                    <li class="flex justify-between">
-                        <span class="font-medium">Amplitude (Máx - Mín):</span>
-                        <span>{{ amplitude.toFixed(2) }}</span>
-                    </li>
-                </ul>
-            </div>
-        </div>
-
-        <!-- Upload + Tabela CSV + RangeCalendar -->
-        <div class="flex flex-col gap-4 w-full">
-            <div
-                class="p-6 bg-white border border-gray-300 rounded-2xl shadow-lg"
-            >
-                <h2 class="text-xl font-bold text-gray-800 mb-4 text-center">
-                    Upload e Processamento de CSV
-                </h2>
-                <input
-                    type="file"
-                    @change="handleFileUpload"
-                    accept=".csv"
-                    class="mb-4"
-                />
-
-                <!-- Exibe dados importados em tabela, para conferência -->
-                <div v-if="parsedData.length" class="mt-4">
-                    <h3 class="text-lg font-semibold text-gray-700 mb-3">
-                        Dados Importados:
-                    </h3>
-                    <div
-                        class="overflow-auto max-h-60 border border-gray-200 rounded-md p-2"
-                    >
-                        <table class="w-full text-sm text-left border-collapse">
-                            <thead class="bg-gray-100">
-                                <tr>
-                                    <th
-                                        v-for="(header, index) in headers"
-                                        :key="index"
-                                        class="border p-2"
+    <SidebarProvider>
+        <!-- Layout com Sidebar e Conteúdo Principal -->
+        <div class="flex h-screen w-full">
+            <!-- SIDEBAR -->
+            <Sidebar class="w-64">
+                <SidebarHeader>
+                    <SidebarMenu>
+                        <SidebarMenuItem>
+                            <DropdownMenu>
+                                <DropdownMenuTrigger as-child>
+                                    <SidebarMenuButton
+                                        size="lg"
+                                        :class="{
+                                            'data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground':
+                                                dropdownOpen,
+                                        }"
+                                        @click="toggleDropdown"
                                     >
-                                        {{ header }}
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr
-                                    v-for="(row, rowIndex) in parsedData"
-                                    :key="rowIndex"
-                                    class="border"
+                                        <div
+                                            class="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground"
+                                        >
+                                            <GalleryVerticalEnd
+                                                class="size-4"
+                                            />
+                                        </div>
+                                        <div
+                                            class="flex flex-col gap-0.5 leading-none"
+                                        >
+                                            <span class="font-semibold"
+                                                >COCA COLA FEMSA</span
+                                            >
+                                            <span>{{ selectedVersion }}</span>
+                                        </div>
+                                        <ChevronsUpDown class="ml-auto" />
+                                    </SidebarMenuButton>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent
+                                    v-if="dropdownOpen"
+                                    class="w-[--radix-dropdown-menu-trigger-width]"
+                                    align="start"
                                 >
-                                    <td
-                                        v-for="(value, key) in row"
-                                        :key="key"
-                                        class="p-2 border"
+                                    <DropdownMenuItem
+                                        v-for="version in data.versions"
+                                        :key="version"
+                                        @click="setSelectedVersion(version)"
                                     >
-                                        {{ value }}
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
+                                        {{ version }}
+                                        <Check
+                                            v-if="version === selectedVersion"
+                                            class="ml-auto"
+                                        />
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </SidebarMenuItem>
+                    </SidebarMenu>
+
+                    <!-- Formulário de Busca -->
+                    <form @submit.prevent>
+                        <SidebarGroup class="py-0">
+                            <SidebarGroupContent class="relative">
+                                <Label for="search" class="sr-only"
+                                    >Search</Label
+                                >
+                                <SidebarInput
+                                    id="search"
+                                    v-model="search"
+                                    placeholder="Search the docs..."
+                                    class="pl-8"
+                                />
+                                <Search
+                                    class="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 select-none opacity-50"
+                                />
+                            </SidebarGroupContent>
+                        </SidebarGroup>
+                    </form>
+                </SidebarHeader>
+
+                <!-- MENU DE NAVEGAÇÃO -->
+                <SidebarContent>
+                    <SidebarGroup
+                        v-for="item in data.navMain"
+                        :key="item.title"
+                    >
+                        <SidebarGroupLabel>{{ item.title }}</SidebarGroupLabel>
+                        <SidebarGroupContent>
+                            <SidebarMenu>
+                                <SidebarMenuItem
+                                    v-for="subItem in item.items"
+                                    :key="subItem.title"
+                                >
+                                    <SidebarMenuButton
+                                        :class="{
+                                            'is-active': subItem.isActive,
+                                        }"
+                                        as-child
+                                    >
+                                        <a :href="subItem.url">{{
+                                            subItem.title
+                                        }}</a>
+                                    </SidebarMenuButton>
+                                </SidebarMenuItem>
+                            </SidebarMenu>
+                        </SidebarGroupContent>
+                    </SidebarGroup>
+                </SidebarContent>
+
+                <SidebarRail />
+            </Sidebar>
+
+            <!-- CONTEÚDO PRINCIPAL DO DASHBOARD -->
+            <SidebarInset class="flex-1 w-full p-0 m-0">
+                <!-- Container Flex vertical sem padding para ocupar a largura total -->
+                <div class="flex flex-col h-full w-full">
+                    <!-- Cabeçalho com Breadcrumb -->
+                    <header
+                        class="flex justify-center h-16 shrink-0 items-center gap-2 border-b px-2"
+                    >
+                        <div class="flex space-x-6">
+                            <SidebarTrigger class="ml-4" />
+                            <h2
+                                class="text-xl font-bold text-gray-800 mb-4 text-center"
+                            >
+                                Monitoramento de CPK e Tendências
+                            </h2>
+                        </div>
+
+                        <!-- Container com botões de ação -->
+                        <div class="flex items-center space-x-4 p-2 ml-auto">
+                            <!-- Botão para Upload de CSV -->
+                            <input
+                                ref="fileInputRef"
+                                type="file"
+                                @change="handleFileUpload"
+                                accept=".csv"
+                                class="hidden"
+                            />
+                            <button
+                                @click="triggerFileInput"
+                                class="p-1 bg-blue-500 hover:bg-blue-600 rounded-full text-white transition-colors shadow-md"
+                            >
+                                <UploadIcon />
+                            </button>
+
+                            <!-- Botão para Gerar Relatório -->
+                            <button
+                                @click="generateReport"
+                                class="p-1 bg-green-500 hover:bg-green-600 rounded-full text-white transition-colors shadow-md"
+                            >
+                                <FileTextIcon />
+                            </button>
+
+                            <!-- Botão para abrir o Drawer com dados importados -->
+                            <Drawer>
+                                <DrawerTrigger>
+                                    <button
+                                        class="p-1 bg-gray-500 hover:bg-gray-600 rounded-full text-white transition-colors shadow-md"
+                                    >
+                                        <EyeIcon />
+                                    </button>
+                                </DrawerTrigger>
+                                <DrawerContent class="h-full">
+                                    <div v-if="parsedData.length" class="p-2">
+                                        <h3
+                                            class="text-lg font-semibold text-gray-700 mb-2"
+                                        >
+                                            Dados Importados
+                                        </h3>
+                                        <div
+                                            class="overflow-auto h-screen border border-gray-200 rounded-md p-2"
+                                        >
+                                            <table
+                                                class="w-full text-sm text-left"
+                                            >
+                                                <thead class="bg-gray-100">
+                                                    <tr>
+                                                        <th
+                                                            v-for="(
+                                                                header, index
+                                                            ) in headers"
+                                                            :key="index"
+                                                            class="border p-2"
+                                                        >
+                                                            {{ header }}
+                                                        </th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr
+                                                        v-for="(
+                                                            row, rowIndex
+                                                        ) in parsedData"
+                                                        :key="rowIndex"
+                                                        class="border hover:bg-gray-50"
+                                                    >
+                                                        <td
+                                                            v-for="(
+                                                                value, key
+                                                            ) in row"
+                                                            :key="key"
+                                                            class="p-2 border"
+                                                        >
+                                                            {{ value }}
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                    <div
+                                        v-else
+                                        class="p-2 text-center text-gray-500"
+                                    >
+                                        Nenhum dado importado.
+                                    </div>
+                                </DrawerContent>
+                            </Drawer>
+
+                            <!-- POPUP para seleção de intervalo de datas -->
+                            <Popover>
+                                <PopoverTrigger as-child>
+                                    <Button
+                                        id="date"
+                                        variant="outline"
+                                        class="w-[300px] justify-start text-left font-normal"
+                                    >
+                                        <CalendarIcon class="mr-2 h-4 w-4" />
+                                        <template v-if="selectedRange.start">
+                                            <template v-if="selectedRange.end">
+                                                {{
+                                                    df.format(
+                                                        selectedRange.start.toDate(
+                                                            getLocalTimeZone(),
+                                                        ),
+                                                    )
+                                                }}
+                                                -
+                                                {{
+                                                    df.format(
+                                                        selectedRange.end.toDate(
+                                                            getLocalTimeZone(),
+                                                        ),
+                                                    )
+                                                }}
+                                            </template>
+                                            <template v-else>
+                                                {{
+                                                    df.format(
+                                                        selectedRange.start.toDate(
+                                                            getLocalTimeZone(),
+                                                        ),
+                                                    )
+                                                }}
+                                            </template>
+                                        </template>
+                                        <template v-else>
+                                            Pick a date
+                                        </template>
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent class="w-auto p-0" align="end">
+                                    <RangeCalendar
+                                        v-model="selectedRange"
+                                        weekday-format="short"
+                                        :number-of-months="2"
+                                        initial-focus
+                                        :placeholder="selectedRange.start"
+                                        @update:start-value="
+                                            (startDate) =>
+                                                (selectedRange.start =
+                                                    startDate)
+                                        "
+                                    />
+                                </PopoverContent>
+                            </Popover>
+                        </div>
+                    </header>
+
+                    <!-- Área de Conteúdo do Dashboard (Gráfico e Estatísticas) ocupando 100% da largura -->
+                    <div class="flex-1 p-8">
+                        <div
+                            class="bg-white border border-gray-300 shadow-lg rounded-lg w-full h-auto flex flex-col"
+                        >
+                            <div
+                                class="flex-1 flex justify-center items-center"
+                            >
+                                <canvas
+                                    ref="chartRef"
+                                    class="w-full h-56"
+                                ></canvas>
+                            </div>
+                            <div class="p-4">
+                                <h2
+                                    class="text-lg font-semibold text-gray-700 mb-3 border-b pb-2"
+                                >
+                                    Estatísticas
+                                </h2>
+                                <ul class="space-y-3 text-gray-600 text-sm">
+                                    <li class="flex justify-between">
+                                        <span class="font-medium">Média:</span>
+                                        <span>{{ media.toFixed(2) }}</span>
+                                    </li>
+                                    <li class="flex justify-between">
+                                        <span class="font-medium"
+                                            >Desvio Padrão (σ):</span
+                                        >
+                                        <span>{{
+                                            desvioPadrao.toFixed(2)
+                                        }}</span>
+                                    </li>
+                                    <li class="flex justify-between">
+                                        <span class="font-medium">CPK:</span>
+                                        <span>{{ cpk.toFixed(2) }}</span>
+                                    </li>
+                                    <li class="flex justify-between">
+                                        <span class="font-medium">CP:</span>
+                                        <span>{{ cp.toFixed(2) }}</span>
+                                    </li>
+                                    <li class="flex justify-between">
+                                        <span class="font-medium"
+                                            >Amplitude (Máx - Mín):</span
+                                        >
+                                        <span>{{ amplitude.toFixed(2) }}</span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
                     </div>
                 </div>
-            </div>
-
-            <!-- RangeCalendar para filtrar por datas -->
-            <div
-                class="p-6 bg-white border border-gray-300 rounded-2xl shadow-lg"
-            >
-                <h2 class="text-xl font-bold text-gray-800 mb-4 text-center">
-                    Filtrar por Data
-                </h2>
-                <RangeCalendar
-                    v-model="selectedRange"
-                    class="rounded-md border"
-                />
-            </div>
+            </SidebarInset>
         </div>
-    </div>
+    </SidebarProvider>
 </template>
 
 <script setup lang="ts">
-import Papa from "papaparse";
+// IMPORTS DE COMPONENTES DE POPUP E BOTÃO
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from "~/components/ui/popover";
+import { Button } from "~/components/ui/button";
+import {
+    Calendar as CalendarIcon,
+    UploadIcon,
+    FileTextIcon,
+    EyeIcon,
+    Check,
+    ChevronsUpDown,
+    GalleryVerticalEnd,
+    Search,
+} from "lucide-vue-next";
+
+// IMPORTS DO INTERNATIONALIZED DATE
+import {
+    DateFormatter,
+    getLocalTimeZone,
+    parseDate,
+} from "@internationalized/date";
+
+// IMPORTS DO VUE
 import { ref, computed, watch, onMounted } from "vue";
-import { RangeCalendar } from "~/components/ui/range-calendar";
-import { parseDate } from "@internationalized/date";
-import type { DateRange } from "radix-vue";
+
+// IMPORTS PARA CSV e CHART.JS
+import Papa from "papaparse";
 import {
     Chart,
     LineController,
@@ -131,25 +376,91 @@ import {
     Legend,
 } from "chart.js";
 
-// Registra os componentes do Chart.js
-Chart.register(
-    LineController,
-    CategoryScale,
-    LinearScale,
-    PointElement,
-    LineElement,
-    Title,
-    Tooltip,
-    Legend,
-);
+// IMPORTS DOS COMPONENTES DO DRAWER
+import { Drawer, DrawerTrigger, DrawerContent } from "~/components/ui/drawer";
 
-// 1) Dados importados (formato esperado):
-// Cada objeto deve ter:
-//   - data: string no formato parseável (ex.: "YYYY-MM-DD")
-//   - valor: número (valor monitorado)
-//   - valor_minimo: número (limite inferior)
-//   - valor_maximo: número (limite superior)
-//   - valor_alvo: número (valor de referência)
+// IMPORTS DOS COMPONENTES DE SIDEBAR E NAVIGAÇÃO
+import {
+    Sidebar,
+    SidebarContent,
+    SidebarGroup,
+    SidebarGroupContent,
+    SidebarGroupLabel,
+    SidebarHeader,
+    SidebarInput,
+    SidebarInset,
+    SidebarMenu,
+    SidebarMenuButton,
+    SidebarMenuItem,
+    SidebarProvider,
+    SidebarRail,
+    SidebarTrigger,
+} from "~/components/ui/sidebar";
+
+// IMPORTS DO DROPDOWN
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "~/components/ui/dropdown-menu";
+
+// IMPORTS DE LABEL, SEPARATOR E BREADCRUMB
+import { Label } from "~/components/ui/label";
+import { Separator } from "~/components/ui/separator";
+import {
+    Breadcrumb,
+    BreadcrumbItem,
+    BreadcrumbLink,
+    BreadcrumbList,
+    BreadcrumbPage,
+    BreadcrumbSeparator,
+} from "~/components/ui/breadcrumb";
+
+// IMPORTAÇÃO DO RANGE CALENDAR (usado tanto no popover quanto para filtragem)
+import { RangeCalendar } from "~/components/ui/range-calendar";
+
+// CRIAÇÃO DE UM DATE FORMATTER para formatar as datas selecionadas
+const df = new DateFormatter("en-US", {
+    dateStyle: "medium",
+});
+
+// ----- ESTADO E LÓGICA DA SIDEBAR E DASHBOARD -----
+const data = {
+    versions: ["G1", "G2", "G3"],
+    navMain: [
+        {
+            title: "Del Valle Kapo",
+            url: "#",
+            items: [
+                { title: "Concentraçao Peróxido", url: "#" },
+                { title: "Conteúdo Líquido", url: "#" },
+                { title: "Brix", url: "#" },
+                { title: "Acidez", url: "#" },
+                { title: "pH", url: "#" },
+            ],
+        },
+    ],
+};
+
+const fileInputRef = ref<HTMLInputElement | null>(null);
+
+const triggerFileInput = () => {
+    fileInputRef.value?.click();
+};
+
+const selectedVersion = ref(data.versions[0]);
+const dropdownOpen = ref(false);
+const search = ref("");
+
+function toggleDropdown() {
+    dropdownOpen.value = !dropdownOpen.value;
+}
+function setSelectedVersion(version: string) {
+    selectedVersion.value = version;
+}
+
+// ----- ESTADO PARA CSV, CHART E FILTRAGEM POR DATA -----
 const cpkData = ref<
     Array<{
         data: string;
@@ -160,22 +471,20 @@ const cpkData = ref<
     }>
 >([]);
 
-// 2) Dados importados para exibição na tabela (CSV)
 const parsedData = ref<Array<Record<string, string>>>([]);
 const headers = ref<string[]>([]);
 
-// 3) Range selecionado para o filtro
+// Usamos parseDate para definir o range inicial (ajuste conforme sua necessidade)
 const start = parseDate("2025-02-01");
 const end = parseDate("2025-02-10");
-const selectedRange = ref<DateRange>({ start, end });
+const selectedRange = ref({ start, end });
 
-// 4) Computed que filtra os dados conforme o range selecionado
+// Filtra os dados conforme o intervalo selecionado
 const getFilteredData = computed(() => {
     if (!selectedRange.value.start || !selectedRange.value.end) {
         console.log("Intervalo de datas não definido.");
         return [];
     }
-
     const startDate = new Date(
         selectedRange.value.start.year,
         selectedRange.value.start.month - 1,
@@ -186,21 +495,19 @@ const getFilteredData = computed(() => {
         selectedRange.value.end.month - 1,
         selectedRange.value.end.day,
     );
-
     return cpkData.value.filter((d) => {
         const dataDate = new Date(d.data);
         return dataDate >= startDate && dataDate <= endDate;
     });
 });
 
-// 5) Estatísticas baseadas nos dados filtrados
+// Cálculo das estatísticas
 const media = computed(() =>
     getFilteredData.value.length
         ? getFilteredData.value.reduce((sum, d) => sum + d.valor, 0) /
           getFilteredData.value.length
         : 0,
 );
-
 const desvioPadrao = computed(() => {
     if (!getFilteredData.value.length) return 0;
     const mean = media.value;
@@ -211,42 +518,37 @@ const desvioPadrao = computed(() => {
         ) / getFilteredData.value.length;
     return Math.sqrt(variancia);
 });
-
 const minValor = computed(() =>
     getFilteredData.value.length
         ? Math.min(...getFilteredData.value.map((d) => d.valor_minimo))
         : 0,
 );
-
 const maxValor = computed(() =>
     getFilteredData.value.length
         ? Math.max(...getFilteredData.value.map((d) => d.valor_maximo))
         : 1,
 );
-
 const amplitude = computed(() => maxValor.value - minValor.value);
+const cp = computed(() =>
+    desvioPadrao.value === 0
+        ? 0
+        : (maxValor.value - minValor.value) / (6 * desvioPadrao.value),
+);
+const cpk = computed(() =>
+    desvioPadrao.value === 0
+        ? 0
+        : Math.min(
+              (media.value - minValor.value) / (3 * desvioPadrao.value),
+              (maxValor.value - media.value) / (3 * desvioPadrao.value),
+          ),
+);
 
-const cp = computed(() => {
-    if (desvioPadrao.value === 0) return 0;
-    return (maxValor.value - minValor.value) / (6 * desvioPadrao.value);
-});
-
-const cpk = computed(() => {
-    if (desvioPadrao.value === 0) return 0;
-    return Math.min(
-        (media.value - minValor.value) / (3 * desvioPadrao.value),
-        (maxValor.value - media.value) / (3 * desvioPadrao.value),
-    );
-});
-
-// 6) Referência para o gráfico e instância do Chart.js
+// CONFIGURAÇÃO DO CHART.JS
 const chartRef = ref<HTMLCanvasElement | null>(null);
 let chartInstance: Chart | null = null;
 
-// 7) Função para atualizar o gráfico usando os dados filtrados
 const updateChart = () => {
     if (!chartRef.value) return;
-
     if (!getFilteredData.value.length) {
         if (chartInstance) {
             chartInstance.destroy();
@@ -254,7 +556,6 @@ const updateChart = () => {
         }
         return;
     }
-
     const labels = getFilteredData.value.map((d) =>
         new Date(d.data).toLocaleDateString("pt-BR"),
     );
@@ -262,9 +563,7 @@ const updateChart = () => {
     const cpkAlvo = getFilteredData.value.map((d) => d.valor_alvo);
     const valoresMinimos = getFilteredData.value.map((d) => d.valor_minimo);
     const valoresMaximos = getFilteredData.value.map((d) => d.valor_maximo);
-
     if (chartInstance) chartInstance.destroy();
-
     chartInstance = new Chart(chartRef.value, {
         type: "line",
         data: {
@@ -306,27 +605,20 @@ const updateChart = () => {
         options: {
             responsive: true,
             scales: {
-                y: {
-                    min: minValor.value,
-                    max: maxValor.value,
-                },
+                y: { min: minValor.value, max: maxValor.value },
             },
         },
     });
 };
 
-// Atualiza o gráfico sempre que o range ou os dados importados mudarem
 watch(selectedRange, updateChart, { deep: true });
 watch(cpkData, updateChart);
-
-// Atualiza o gráfico ao montar o componente
 onMounted(updateChart);
 
-// 8) Função para processar o upload do CSV e converter os dados para o formato esperado
+// PROCESSAMENTO DO UPLOAD DO CSV
 const handleFileUpload = (event: Event) => {
     const file = (event.target as HTMLInputElement).files?.[0];
     if (!file) return;
-
     Papa.parse(file, {
         header: true,
         skipEmptyLines: true,
@@ -334,17 +626,13 @@ const handleFileUpload = (event: Event) => {
             if (result.data.length > 0) {
                 parsedData.value = result.data as Array<Record<string, string>>;
                 headers.value = Object.keys(result.data[0]);
-
-                // Converte cada linha do CSV para o formato esperado
                 const convertedCSV = parsedData.value.map((row) => ({
-                    data: row.data, // Ex.: "YYYY-MM-DD"
+                    data: row.data,
                     valor: parseFloat(row.valor),
                     valor_minimo: parseFloat(row.valor_minimo),
                     valor_maximo: parseFloat(row.valor_maximo),
                     valor_alvo: parseFloat(row.valor_alvo),
                 }));
-
-                // Atualiza os dados que serão filtrados e exibidos no gráfico
                 cpkData.value = convertedCSV;
                 updateChart();
             }
@@ -354,4 +642,70 @@ const handleFileUpload = (event: Event) => {
         },
     });
 };
+
+const generateReport = () => {
+    const reportData = {
+        dataRelatorio: new Date().toLocaleString("pt-BR"),
+        media: media.value.toFixed(2),
+        desvio: desvioPadrao.value.toFixed(2),
+        cp: cp.value.toFixed(2),
+        cpk: cpk.value.toFixed(2),
+        amplitude: amplitude.value.toFixed(2),
+    };
+    let imageData = "";
+    if (chartRef.value) {
+        imageData = chartRef.value.toDataURL("image/png");
+    }
+    const reportHTML = `
+    <html>
+      <head>
+        <title>Relatório de Monitoramento</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; }
+          h1 { color: #333; }
+          .stats { margin: 20px 0; }
+          .stats li { margin-bottom: 5px; }
+          .chart { margin-top: 20px; }
+        </style>
+      </head>
+      <body>
+        <h1>Relatório de Monitoramento</h1>
+        <p><strong>Data do Relatório:</strong> ${reportData.dataRelatorio}</p>
+        <div class="stats">
+          <h2>Estatísticas</h2>
+          <ul>
+            <li><strong>Média:</strong> ${reportData.media}</li>
+            <li><strong>Desvio Padrão:</strong> ${reportData.desvio}</li>
+            <li><strong>CP:</strong> ${reportData.cp}</li>
+            <li><strong>CPK:</strong> ${reportData.cpk}</li>
+            <li><strong>Amplitude:</strong> ${reportData.amplitude}</li>
+          </ul>
+        </div>
+        <div class="chart">
+          <h2>Gráfico</h2>
+          ${imageData ? `<img src="${imageData}" alt="Gráfico de Monitoramento" style="max-width: 100%;">` : "<p>Gráfico não disponível.</p>"}
+        </div>
+      </body>
+    </html>
+  `;
+    const reportWindow = window.open("", "_blank");
+    if (reportWindow) {
+        reportWindow.document.write(reportHTML);
+        reportWindow.document.close();
+    } else {
+        console.error("Falha ao abrir a janela do relatório.");
+    }
+};
+
+// REGISTRO DOS COMPONENTES DO CHART.JS
+Chart.register(
+    LineController,
+    CategoryScale,
+    LinearScale,
+    PointElement,
+    LineElement,
+    Title,
+    Tooltip,
+    Legend,
+);
 </script>
