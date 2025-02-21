@@ -758,17 +758,18 @@ const handleFileUpload = (event: Event) => {
                 parsedData.value = result.data as Array<Record<string, string>>;
                 headers.value = Object.keys(result.data[0]);
                 const convertedCSV = parsedData.value.map((row) => ({
-                    data: row.data,
-                    valor: parseFloat(row.valor),
-                    valor_minimo: parseFloat(row.valor_minimo),
-                    valor_maximo: parseFloat(row.valor_maximo),
-                    valor_alvo: parseFloat(row.valor_alvo),
-                    material: row.material || "", // Incluindo o novo campo "material"
+                    data: row["Data de Inicio"], // Ajustado para propriedade 'data'
+                    material: row["Material"] || "", // Mantém 'material'
+                    valor: parseFloat(row["Val.médio"]), // Ajustado para propriedade 'valor'
+                    valor_minimo: parseFloat(row["Lim.inf.tolerância"]), // Para 'valor_minimo'
+                    valor_maximo: parseFloat(row["Valor limite sup."]), // Para 'valor_maximo'
+                    valor_alvo: parseFloat(row["Valor teórico"]), // Para 'valor_alvo'
                 }));
                 cpkData.value = convertedCSV;
                 updateChart();
             }
         },
+
         error: (error) => {
             console.error("Erro ao processar CSV:", error);
         },
